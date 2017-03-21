@@ -103,27 +103,28 @@ def prepare_models():
         sa_models_by_table_names = getattr(Cache, 'models', {})
 
     for model in models:
+        if not (hasattr(model, 'KarmaMeta') and getattr(model.KarmaMeta, 'no_sql_alchemy', False)):
+            table_name = model._meta.db_table
+            mixin = getattr(model, 'aldjemy_mixin', None)
+            bases = (mixin, BaseSQLAModel) if mixin else (BaseSQLAModel, )
+            table = tables[table_name]
 
-        table_name = model._meta.db_table
-        mixin = getattr(model, 'aldjemy_mixin', None)
-        bases = (mixin, BaseSQLAModel) if mixin else (BaseSQLAModel, )
-        table = tables[table_name]
+            # because querying happens on sqlalchemy side, we can use only one
+            # type of queries for alias, so we use 'read' type
+            sa_model = type(model._meta.object_name, bases,
+                            {'table': table,
+                             'alias': router.db_for_read(model)})
 
-        # because querying happens on sqlalchemy side, we can use only one
-        # type of queries for alias, so we use 'read' type
-        sa_model = type(model._meta.object_name, bases,
-                        {'table': table,
-                         'alias': router.db_for_read(model)})
-
-        sa_models_by_table_names[table_name] = sa_model
-        sa_models_by_django_models[model] = sa_model
+            sa_models_by_table_names[table_name] = sa_model
+            sa_models_by_django_models[model] = sa_model
 
     for model in models:
-        sa_model = sa_models_by_django_models[model]
-        table = tables[model._meta.db_table]
-        attrs = _extract_model_attrs(model, sa_models_by_django_models)
-        orm.mapper(sa_model, table, attrs)
-        model.sa = sa_model
+        if not (hasattr(model, 'KarmaMeta') and getattr(model.KarmaMeta, 'no_sql_alchemy', False)):
+            sa_model = sa_models_by_django_models[model]
+            table = tables[model._meta.db_table]
+            attrs = _extract_model_attrs(model, sa_models_by_django_models)
+            orm.mapper(sa_model, table, attrs)
+            model.sa = sa_model
 
     Cache.sa_models = sa_models_by_django_models
     Cache.models = sa_models_by_table_names
